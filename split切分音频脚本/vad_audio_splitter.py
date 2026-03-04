@@ -11,9 +11,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List
 
-from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
-
-
 DEFAULT_AUDIO_PATH = r"d:\Users\Desktop\工作123\语图\示例.wav"
 DEFAULT_OUTPUT_DIR = r"d:\Users\Desktop\工作123\语图\vad_output"
 DEFAULT_OUTPUT_PREFIX = "output"
@@ -78,6 +75,13 @@ def sanitize_output_prefix(output_prefix: str) -> str:
 
 
 def detect_speech_segments(audio_path: Path, config: VadSplitConfig) -> List[Segment]:
+    try:
+        from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+    except ImportError as exc:
+        raise RuntimeError(
+            "无法加载 silero-vad，请在运行脚本的 Python 环境中安装或修复依赖："
+            "python -m pip install silero-vad"
+        ) from exc
     model = load_silero_vad()
     wav = read_audio(str(audio_path), sampling_rate=config.sampling_rate)
 
