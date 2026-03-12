@@ -41,6 +41,9 @@ class VadSplitConfig:
 
 
 def validate_config(config: VadSplitConfig) -> None:
+    for name, value in asdict(config).items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"{name} 必须是有限数值，不能使用 NaN 或无穷大。")
     if config.sampling_rate not in (8000, 16000):
         raise ValueError("sampling_rate 只能使用 8000 或 16000。")
     if not 0.0 < config.threshold < 1.0:
@@ -49,6 +52,8 @@ def validate_config(config: VadSplitConfig) -> None:
         raise ValueError("min_speech_duration_ms 必须大于 0。")
     if config.min_silence_duration_ms < 0:
         raise ValueError("min_silence_duration_ms 不能小于 0。")
+    if config.speech_pad_ms < 0:
+        raise ValueError("speech_pad_ms 不能小于 0。")
     if config.max_speech_duration_s <= 0:
         raise ValueError("max_speech_duration_s 必须大于 0。")
     if config.merge_gap_sec < 0:
