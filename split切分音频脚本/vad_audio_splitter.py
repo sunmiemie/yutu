@@ -67,9 +67,18 @@ def validate_config(config: VadSplitConfig) -> None:
 
 
 def get_wav_duration_sec(audio_path: Path) -> float:
-    with wave.open(str(audio_path), "rb") as wav_reader:
-        frame_rate = wav_reader.getframerate()
-        total_frames = wav_reader.getnframes()
+    if not audio_path.is_file():
+        raise ValueError(f"输入路径不是音频文件: {audio_path}")
+    if audio_path.suffix.lower() != ".wav":
+        raise ValueError("当前切分实现仅支持 WAV 文件，请先将音频转换为 .wav 格式。")
+    try:
+        with wave.open(str(audio_path), "rb") as wav_reader:
+            frame_rate = wav_reader.getframerate()
+            total_frames = wav_reader.getnframes()
+    except (wave.Error, EOFError) as exc:
+        raise ValueError(f"无法读取 PCM WAV 音频: {audio_path}") from exc
+    if frame_rate <= 0 or total_frames <= 0:
+        raise ValueError(f"WAV 音频没有有效采样帧: {audio_path}")
     return total_frames / float(frame_rate)
 
 
@@ -99,19 +108,24 @@ def detect_speech_segments(audio_path: Path, config: VadSplitConfig) -> List[Seg
         min_silence_duration_ms=config.min_silence_duration_ms,
         speech_pad_ms=config.speech_pad_ms,
         max_speech_duration_s=config.max_speech_duration_s,
-        return_seconds=True,
+        return_seconds=False,
     )
 
     return [
         Segment(
-            start_sec=round(float(item["start"]), 3),
-            end_sec=round(float(item["end"]), 3),
+            start_sec=float(item["start"]) / config.sampling_rate,
+            end_sec=float(item["end"]) / config.sampling_rate,
         )
         for item in timestamps
     ]
 
 
 def normalize_segments(segments: List[Segment], audio_duration_sec: float) -> List[Segment]:
+    if not math.isfinite(audio_duration_sec) or audio_duration_sec < 0:
+        raise ValueError("音频总时长必须是有限的非负数值。")
+    for index, segment in enumerate(segments, start=1):
+        if not math.isfinite(segment.start_sec) or not math.isfinite(segment.end_sec):
+            raise ValueError(f"第 {index} 个片段的起止时间必须是有限数值。")
     normalized: List[Segment] = []
 
     for segment in sorted(segments, key=lambda item: (item.start_sec, item.end_sec)):
@@ -119,7 +133,7 @@ def normalize_segments(segments: List[Segment], audio_duration_sec: float) -> Li
         end_sec = max(0.0, min(segment.end_sec, audio_duration_sec))
         if end_sec <= start_sec:
             continue
-        normalized.append(Segment(round(start_sec, 3), round(end_sec, 3)))
+        normalized.append(Segment(start_sec, end_sec))
 
     return normalized
 
@@ -195,7 +209,7 @@ def add_extra_padding(
         end_sec = min(audio_duration_sec, segment.end_sec + extra_pad_sec)
 
         if end_sec > start_sec:
-            padded.append(Segment(round(start_sec, 3), round(end_sec, 3)))
+            padded.append(Segment(start_sec, end_sec))
 
     return padded
 
