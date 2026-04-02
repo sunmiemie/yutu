@@ -327,12 +327,18 @@ def split_wav_by_segments(
                 continue
 
             wav_reader.setpos(start_frame)
-            frames = wav_reader.readframes(end_frame - start_frame)
-
             output_path = output_dir / f"{output_prefix}-{index:03d}.wav"
             with wave.open(str(output_path), "wb") as wav_writer:
                 wav_writer.setparams(params)
-                wav_writer.writeframes(frames)
+                remaining = end_frame - start_frame
+                frame_size = params.nchannels * params.sampwidth
+                while remaining:
+                    frame_count = min(remaining, 65536)
+                    frames = wav_reader.readframes(frame_count)
+                    if len(frames) != frame_count * frame_size:
+                        raise ValueError(f"WAV 音频数据不完整: {audio_path}")
+                    wav_writer.writeframesraw(frames)
+                    remaining -= frame_count
 
             saved_files.append(output_path)
 
