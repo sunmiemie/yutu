@@ -5,7 +5,9 @@ import csv
 import json
 import math
 import re
+import shutil
 import sys
+import tempfile
 import wave
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -358,21 +360,49 @@ def run_pipeline(
 
     output_prefix = sanitize_output_prefix(output_prefix)
     audio_duration_sec = get_wav_duration_sec(audio_path)
+    if output_dir.exists():
+        if not output_dir.is_dir():
+            raise NotADirectoryError(f"输出路径不是文件夹: {output_dir}")
+        output_pattern = re.compile(rf"{re.escape(output_prefix)}-(\d+)\.wav", re.IGNORECASE)
+        manifest_names = {f"{output_prefix}_vad_segments.json".lower(), f"{output_prefix}_vad_segments.csv".lower()}
+        for existing in output_dir.iterdir():
+            if output_pattern.fullmatch(existing.name) or existing.name.lower() in manifest_names:
+                raise FileExistsError(f"输出已存在，请选择新目录或不同前缀: {existing}")
 
     raw_segments = detect_speech_segments(audio_path, config)
     final_segments = post_process_segments(raw_segments, config, audio_duration_sec)
 
-    manifest_path = export_segments_manifest(
-        audio_path=audio_path,
-        output_dir=output_dir,
-        raw_segments=raw_segments,
-        final_segments=final_segments,
-        config=config,
-        output_prefix=output_prefix,
-        audio_duration_sec=audio_duration_sec,
-    )
-    csv_path = export_segments_csv(output_dir, final_segments, output_prefix)
-    saved_files = split_wav_by_segments(audio_path, output_dir, final_segments, output_prefix)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # Finish every export in a temporary directory before publishing any results.
+    # Exclusive creation also protects files created after the initial preflight.
+    with tempfile.TemporaryDirectory(prefix=".vad-", dir=output_dir) as temporary:
+        staging_dir = Path(temporary)
+        staged_wavs = split_wav_by_segments(audio_path, staging_dir, final_segments, output_prefix)
+        staged_manifest = export_segments_manifest(
+            audio_path=audio_path,
+            output_dir=staging_dir,
+            raw_segments=raw_segments,
+            final_segments=final_segments,
+            config=config,
+            output_prefix=output_prefix,
+            audio_duration_sec=audio_duration_sec,
+        )
+        staged_csv = export_segments_csv(staging_dir, final_segments, output_prefix)
+        published: List[Path] = []
+        try:
+            for staged_file in [*staged_wavs, staged_manifest, staged_csv]:
+                destination = output_dir / staged_file.name
+                with destination.open("xb") as output:
+                    published.append(destination)
+                    with staged_file.open("rb") as source:
+                        shutil.copyfileobj(source, output)
+        except BaseException:
+            for destination in published:
+                destination.unlink()
+            raise
+    manifest_path = output_dir / staged_manifest.name
+    csv_path = output_dir / staged_csv.name
+    saved_files = [output_dir / item.name for item in staged_wavs]
 
     print(f"输入音频: {audio_path}")
     print(f"音频总时长: {audio_duration_sec:.3f} 秒")
