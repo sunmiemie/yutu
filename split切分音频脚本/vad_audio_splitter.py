@@ -13,8 +13,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List
 
-DEFAULT_AUDIO_PATH = r"d:\Users\Desktop\工作123\语图\示例.wav"
-DEFAULT_OUTPUT_DIR = r"d:\Users\Desktop\工作123\语图\vad_output"
 DEFAULT_OUTPUT_PREFIX = "output"
 
 
@@ -426,7 +424,7 @@ def find_wav_files(folder_path: Path) -> List[Path]:
     )
 
 
-def run_folder_pipeline(folder_path: Path, config: VadSplitConfig) -> None:
+def run_folder_pipeline(folder_path: Path, config: VadSplitConfig, output_root: Path = None) -> None:
     validate_config(config)
 
     if not folder_path.exists():
@@ -439,7 +437,7 @@ def run_folder_pipeline(folder_path: Path, config: VadSplitConfig) -> None:
         print("未找到 .wav 音频文件。")
         return
 
-    output_root = folder_path / "vad_output"
+    output_root = output_root if output_root is not None else folder_path / "vad_output"
     print(f"发现 {len(wav_files)} 个 WAV 文件。")
 
     for index, audio_path in enumerate(wav_files, start=1):
@@ -456,25 +454,32 @@ def run_folder_pipeline(folder_path: Path, config: VadSplitConfig) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="使用 Silero VAD 检测语音并切分 WAV 音频。")
-    parser.add_argument("--audio", default=DEFAULT_AUDIO_PATH, help="输入 WAV 音频路径")
-    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="切分音频和清单文件的输出目录")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--audio", help="输入 WAV 音频路径")
+    source.add_argument("--folder", help="批量处理文件夹中的 WAV 音频（不递归）")
+    parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
     parser.add_argument("--min-speech-duration-ms", type=int, default=500, help="最短语音片段时长，单位毫秒")
     parser.add_argument("--min-silence-duration-ms", type=int, default=500, help="切分所需的最短静音时长，单位毫秒")
     parser.add_argument("--speech-pad-ms", type=int, default=0, help="VAD 检测时每段前后补边时长，单位毫秒")
-    parser.add_argument("--max-speech-duration-s", type=float, default=20.0, help="单段语音最长时长，单位秒")
+    parser.add_argument("--max-speech-duration-s", type=float, default=VadSplitConfig().max_speech_duration_s, help="单段语音最长时长，单位秒")
     parser.add_argument("--merge-gap-sec", type=float, default=0.0, help="相邻片段合并的最大间隔，单位秒")
     parser.add_argument("--min-segment-duration-sec", type=float, default=0.0, help="后处理时目标最短片段时长，单位秒")
     parser.add_argument("--extra-pad-sec", type=float, default=0.5, help="导出时前后额外保留的静音时长，单位秒")
     parser.add_argument("--absolute-min-duration-sec", type=float, default=0.5, help="最终允许导出的最短片段时长，单位秒")
-    parser.add_argument("--output-prefix", default=DEFAULT_OUTPUT_PREFIX, help="输出文件名前缀，例如 Japan")
+    parser.add_argument("--output-prefix", help="单文件输出前缀，例如 Japan；默认使用输入文件名")
     return parser
 
 
-def main() -> None:
+def main(argv: List[str] = None) -> int:
     parser = build_arg_parser()
-    args = parser.parse_args()
+    arguments = sys.argv[1:] if argv is None else argv
+    args = parser.parse_args(arguments)
+    if arguments and not (args.audio or args.folder):
+        parser.error("请指定 --audio 或 --folder。")
+    if args.folder and args.output_prefix is not None:
+        parser.error("--output-prefix 仅适用于 --audio；文件夹模式按各音频文件名命名。")
 
     config = VadSplitConfig(
         sampling_rate=args.sampling_rate,
@@ -489,22 +494,25 @@ def main() -> None:
         absolute_min_duration_sec=args.absolute_min_duration_sec,
     )
 
-    if len(sys.argv) > 1:
-        run_pipeline(
-            audio_path=Path(args.audio),
-            output_dir=Path(args.output_dir),
-            config=config,
-            output_prefix=args.output_prefix or Path(args.audio).stem,
-        )
-        return
-
-    folder_input = input("请输入文件夹地址：").strip().strip('"')
-    if not folder_input:
-        print("未输入文件夹地址，程序结束。")
-        return
-
-    run_folder_pipeline(Path(folder_input), config)
+    try:
+        if args.audio:
+            audio_path = Path(args.audio).expanduser()
+            output_dir = Path(args.output_dir).expanduser() if args.output_dir else audio_path.parent / "vad_output" / audio_path.stem
+            run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem)
+        elif args.folder:
+            output_root = Path(args.output_dir).expanduser() if args.output_dir else None
+            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root)
+        else:
+            folder_input = input("请输入文件夹地址：").strip().strip('"')
+            if not folder_input:
+                print("未输入文件夹地址，程序结束。")
+                return 0
+            run_folder_pipeline(Path(folder_input).expanduser(), config)
+    except (OSError, ValueError, RuntimeError, EOFError) as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
