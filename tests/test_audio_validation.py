@@ -29,6 +29,8 @@ class AudioValidationTests(unittest.TestCase):
                 splitter.get_wav_duration_sec(source)
 
     def test_sample_timestamps_preserve_sub_millisecond_segments(self):
+        splitter.load_vad_model.cache_clear()
+        self.addCleanup(splitter.load_vad_model.cache_clear)
         fake_vad = SimpleNamespace(
             load_silero_vad=Mock(return_value=object()),
             read_audio=Mock(return_value=object()),

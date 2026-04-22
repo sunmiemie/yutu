@@ -10,6 +10,7 @@ import sys
 import tempfile
 import wave
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import List
 
@@ -88,15 +89,22 @@ def sanitize_output_prefix(output_prefix: str) -> str:
     return cleaned or "output"
 
 
+@lru_cache(maxsize=1)
+def load_vad_model():
+    """Reuse one model for sequential files within this CLI process."""
+    from silero_vad import load_silero_vad
+    return load_silero_vad()
+
+
 def detect_speech_segments(audio_path: Path, config: VadSplitConfig) -> List[Segment]:
     try:
-        from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+        from silero_vad import get_speech_timestamps, read_audio
+        model = load_vad_model()
     except ImportError as exc:
         raise RuntimeError(
             "无法加载 silero-vad，请在运行脚本的 Python 环境中安装或修复依赖："
             "python -m pip install silero-vad"
         ) from exc
-    model = load_silero_vad()
     wav = read_audio(str(audio_path), sampling_rate=config.sampling_rate)
 
     timestamps = get_speech_timestamps(
@@ -424,7 +432,13 @@ def find_wav_files(folder_path: Path) -> List[Path]:
     )
 
 
-def run_folder_pipeline(folder_path: Path, config: VadSplitConfig, output_root: Path = None) -> None:
+def run_folder_pipeline(
+    folder_path: Path,
+    config: VadSplitConfig,
+    output_root: Path = None,
+    *,
+    continue_on_error: bool = False,
+) -> None:
     validate_config(config)
 
     if not folder_path.exists():
@@ -439,17 +453,28 @@ def run_folder_pipeline(folder_path: Path, config: VadSplitConfig, output_root: 
 
     output_root = output_root if output_root is not None else folder_path / "vad_output"
     print(f"发现 {len(wav_files)} 个 WAV 文件。")
+    failures = []
 
     for index, audio_path in enumerate(wav_files, start=1):
         print("\n===================================")
         print(f"[{index}/{len(wav_files)}] 开始处理: {audio_path.name}")
         print("===================================")
-        run_pipeline(
-            audio_path=audio_path,
-            output_dir=output_root / audio_path.stem,
-            config=config,
-            output_prefix=audio_path.stem,
-        )
+        try:
+            run_pipeline(
+                audio_path=audio_path,
+                output_dir=output_root / audio_path.stem,
+                config=config,
+                output_prefix=audio_path.stem,
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            if not continue_on_error:
+                raise
+            failures.append(audio_path.name)
+            print(f"处理失败 {audio_path.name}: {exc}", file=sys.stderr)
+
+    print(f"批量处理完成：成功 {len(wav_files) - len(failures)} 个，失败 {len(failures)} 个。")
+    if failures:
+        raise RuntimeError(f"以下音频处理失败: {', '.join(failures)}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -457,6 +482,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--audio", help="输入 WAV 音频路径")
     source.add_argument("--folder", help="批量处理文件夹中的 WAV 音频（不递归）")
+    parser.add_argument("--continue-on-error", action="store_true", help="文件夹模式中记录失败并继续处理后续音频，存在失败时仍返回非零状态码")
     parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
@@ -480,6 +506,8 @@ def main(argv: List[str] = None) -> int:
         parser.error("请指定 --audio 或 --folder。")
     if args.folder and args.output_prefix is not None:
         parser.error("--output-prefix 仅适用于 --audio；文件夹模式按各音频文件名命名。")
+    if args.continue_on_error and not args.folder:
+        parser.error("--continue-on-error 仅适用于 --folder。")
 
     config = VadSplitConfig(
         sampling_rate=args.sampling_rate,
@@ -501,7 +529,7 @@ def main(argv: List[str] = None) -> int:
             run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem)
         elif args.folder:
             output_root = Path(args.output_dir).expanduser() if args.output_dir else None
-            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root)
+            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root, continue_on_error=args.continue_on_error)
         else:
             folder_input = input("请输入文件夹地址：").strip().strip('"')
             if not folder_input:
