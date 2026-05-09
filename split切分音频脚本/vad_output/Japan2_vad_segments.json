@@ -1,0 +1,398 @@
+{
+  "audio_path": "d:\\Users\\Desktop\\工作123\\语图\\佐藤(男)「電話に出る／出ない」.wav",
+  "audio_duration_sec": 69.881,
+  "output_prefix": "Japan2",
+  "config": {
+    "sampling_rate": 16000,
+    "threshold": 0.5,
+    "min_speech_duration_ms": 500,
+    "min_silence_duration_ms": 500,
+    "speech_pad_ms": 0,
+    "max_speech_duration_s": 20.0,
+    "merge_gap_sec": 0.0,
+    "min_segment_duration_sec": 0.0,
+    "extra_pad_sec": 0.5,
+    "absolute_min_duration_sec": 0.5
+  },
+  "raw_segments": [
+    {
+      "index": 1,
+      "start_sec": 1.2,
+      "end_sec": 2.2,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 2,
+      "start_sec": 3.7,
+      "end_sec": 4.6,
+      "duration_sec": 0.9
+    },
+    {
+      "index": 3,
+      "start_sec": 6.1,
+      "end_sec": 7.1,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 4,
+      "start_sec": 8.4,
+      "end_sec": 9.3,
+      "duration_sec": 0.9
+    },
+    {
+      "index": 5,
+      "start_sec": 10.6,
+      "end_sec": 11.6,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 6,
+      "start_sec": 12.8,
+      "end_sec": 13.8,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 7,
+      "start_sec": 15.0,
+      "end_sec": 16.0,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 8,
+      "start_sec": 17.2,
+      "end_sec": 18.1,
+      "duration_sec": 0.9
+    },
+    {
+      "index": 9,
+      "start_sec": 19.5,
+      "end_sec": 20.4,
+      "duration_sec": 0.9
+    },
+    {
+      "index": 10,
+      "start_sec": 21.7,
+      "end_sec": 22.6,
+      "duration_sec": 0.9
+    },
+    {
+      "index": 11,
+      "start_sec": 23.9,
+      "end_sec": 24.9,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 12,
+      "start_sec": 26.1,
+      "end_sec": 27.1,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 13,
+      "start_sec": 28.4,
+      "end_sec": 29.4,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 14,
+      "start_sec": 30.7,
+      "end_sec": 32.8,
+      "duration_sec": 2.1
+    },
+    {
+      "index": 15,
+      "start_sec": 34.1,
+      "end_sec": 35.1,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 16,
+      "start_sec": 36.2,
+      "end_sec": 38.4,
+      "duration_sec": 2.2
+    },
+    {
+      "index": 17,
+      "start_sec": 39.6,
+      "end_sec": 40.7,
+      "duration_sec": 1.1
+    },
+    {
+      "index": 18,
+      "start_sec": 41.9,
+      "end_sec": 42.9,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 19,
+      "start_sec": 44.2,
+      "end_sec": 45.2,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 20,
+      "start_sec": 46.4,
+      "end_sec": 47.5,
+      "duration_sec": 1.1
+    },
+    {
+      "index": 21,
+      "start_sec": 48.7,
+      "end_sec": 49.7,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 22,
+      "start_sec": 50.9,
+      "end_sec": 52.0,
+      "duration_sec": 1.1
+    },
+    {
+      "index": 23,
+      "start_sec": 53.3,
+      "end_sec": 54.3,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 24,
+      "start_sec": 55.5,
+      "end_sec": 56.5,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 25,
+      "start_sec": 57.8,
+      "end_sec": 58.8,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 26,
+      "start_sec": 60.0,
+      "end_sec": 61.1,
+      "duration_sec": 1.1
+    },
+    {
+      "index": 27,
+      "start_sec": 62.3,
+      "end_sec": 63.3,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 28,
+      "start_sec": 64.6,
+      "end_sec": 65.6,
+      "duration_sec": 1.0
+    },
+    {
+      "index": 29,
+      "start_sec": 66.8,
+      "end_sec": 67.9,
+      "duration_sec": 1.1
+    }
+  ],
+  "final_segments": [
+    {
+      "index": 1,
+      "segment_name": "Japan2-001.wav",
+      "start_sec": 0.7,
+      "end_sec": 2.7,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 2,
+      "segment_name": "Japan2-002.wav",
+      "start_sec": 3.2,
+      "end_sec": 5.1,
+      "duration_sec": 1.9
+    },
+    {
+      "index": 3,
+      "segment_name": "Japan2-003.wav",
+      "start_sec": 5.6,
+      "end_sec": 7.6,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 4,
+      "segment_name": "Japan2-004.wav",
+      "start_sec": 7.9,
+      "end_sec": 9.8,
+      "duration_sec": 1.9
+    },
+    {
+      "index": 5,
+      "segment_name": "Japan2-005.wav",
+      "start_sec": 10.1,
+      "end_sec": 12.1,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 6,
+      "segment_name": "Japan2-006.wav",
+      "start_sec": 12.3,
+      "end_sec": 14.3,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 7,
+      "segment_name": "Japan2-007.wav",
+      "start_sec": 14.5,
+      "end_sec": 16.5,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 8,
+      "segment_name": "Japan2-008.wav",
+      "start_sec": 16.7,
+      "end_sec": 18.6,
+      "duration_sec": 1.9
+    },
+    {
+      "index": 9,
+      "segment_name": "Japan2-009.wav",
+      "start_sec": 19.0,
+      "end_sec": 20.9,
+      "duration_sec": 1.9
+    },
+    {
+      "index": 10,
+      "segment_name": "Japan2-010.wav",
+      "start_sec": 21.2,
+      "end_sec": 23.1,
+      "duration_sec": 1.9
+    },
+    {
+      "index": 11,
+      "segment_name": "Japan2-011.wav",
+      "start_sec": 23.4,
+      "end_sec": 25.4,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 12,
+      "segment_name": "Japan2-012.wav",
+      "start_sec": 25.6,
+      "end_sec": 27.6,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 13,
+      "segment_name": "Japan2-013.wav",
+      "start_sec": 27.9,
+      "end_sec": 29.9,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 14,
+      "segment_name": "Japan2-014.wav",
+      "start_sec": 30.2,
+      "end_sec": 33.3,
+      "duration_sec": 3.1
+    },
+    {
+      "index": 15,
+      "segment_name": "Japan2-015.wav",
+      "start_sec": 33.6,
+      "end_sec": 35.6,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 16,
+      "segment_name": "Japan2-016.wav",
+      "start_sec": 35.7,
+      "end_sec": 38.9,
+      "duration_sec": 3.2
+    },
+    {
+      "index": 17,
+      "segment_name": "Japan2-017.wav",
+      "start_sec": 39.1,
+      "end_sec": 41.2,
+      "duration_sec": 2.1
+    },
+    {
+      "index": 18,
+      "segment_name": "Japan2-018.wav",
+      "start_sec": 41.4,
+      "end_sec": 43.4,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 19,
+      "segment_name": "Japan2-019.wav",
+      "start_sec": 43.7,
+      "end_sec": 45.7,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 20,
+      "segment_name": "Japan2-020.wav",
+      "start_sec": 45.9,
+      "end_sec": 48.0,
+      "duration_sec": 2.1
+    },
+    {
+      "index": 21,
+      "segment_name": "Japan2-021.wav",
+      "start_sec": 48.2,
+      "end_sec": 50.2,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 22,
+      "segment_name": "Japan2-022.wav",
+      "start_sec": 50.4,
+      "end_sec": 52.5,
+      "duration_sec": 2.1
+    },
+    {
+      "index": 23,
+      "segment_name": "Japan2-023.wav",
+      "start_sec": 52.8,
+      "end_sec": 54.8,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 24,
+      "segment_name": "Japan2-024.wav",
+      "start_sec": 55.0,
+      "end_sec": 57.0,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 25,
+      "segment_name": "Japan2-025.wav",
+      "start_sec": 57.3,
+      "end_sec": 59.3,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 26,
+      "segment_name": "Japan2-026.wav",
+      "start_sec": 59.5,
+      "end_sec": 61.6,
+      "duration_sec": 2.1
+    },
+    {
+      "index": 27,
+      "segment_name": "Japan2-027.wav",
+      "start_sec": 61.8,
+      "end_sec": 63.8,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 28,
+      "segment_name": "Japan2-028.wav",
+      "start_sec": 64.1,
+      "end_sec": 66.1,
+      "duration_sec": 2.0
+    },
+    {
+      "index": 29,
+      "segment_name": "Japan2-029.wav",
+      "start_sec": 66.3,
+      "end_sec": 68.4,
+      "duration_sec": 2.1
+    }
+  ]
+}
