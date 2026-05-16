@@ -194,6 +194,7 @@ def merge_short_segments(segments: List[Segment], min_segment_duration_sec: floa
 
         if index < len(merged) - 1:
             merged[index + 1].start_sec = min(merged[index + 1].start_sec, current.start_sec)
+            merged[index + 1].end_sec = max(merged[index + 1].end_sec, current.end_sec)
             del merged[index]
             continue
 
