@@ -13,6 +13,8 @@ python "split切分音频脚本/vad_audio_splitter.py" --folder "录音" --outpu
 
 在仓库根目录运行离线回归测试（无需安装 VAD 依赖）：
 
+输出前缀保留中文、日文等 Unicode 字母和数字，将路径分隔符替换为短横线，并限制为 120 UTF-8 字节，为清单文件后缀留出空间。
+
 ```bash
 python -m unittest discover -s tests -v
 ```

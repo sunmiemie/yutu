@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 import tempfile
+import unicodedata
 import wave
 from dataclasses import asdict, dataclass
 from functools import lru_cache
@@ -84,7 +85,9 @@ def get_wav_duration_sec(audio_path: Path) -> float:
 
 
 def sanitize_output_prefix(output_prefix: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", output_prefix.strip())
+    cleaned = re.sub(r"[^\w-]+", "-", unicodedata.normalize("NFC", output_prefix.strip()))
+    # Leave enough room for sequence numbers and manifest suffixes on common filesystems.
+    cleaned = cleaned.encode("utf-8")[:120].decode("utf-8", errors="ignore")
     cleaned = cleaned.strip("-_")
     return cleaned or "output"
 
