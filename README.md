@@ -15,6 +15,8 @@ python "split切分音频脚本/vad_audio_splitter.py" --folder "录音" --outpu
 
 输出前缀保留中文、日文等 Unicode 字母和数字，将路径分隔符替换为短横线，并限制为 120 UTF-8 字节，为清单文件后缀留出空间。
 
+JSON/CSV 清单保留时间戳的浮点精度；JSON 还记录原始 WAV 格式与每段实际导出的起止帧（结束帧不包含），便于核对不足 1 毫秒的短片段。
+
 ```bash
 python -m unittest discover -s tests -v
 ```

@@ -264,9 +264,15 @@ def export_segments_manifest(
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / f"{output_prefix}_vad_segments.json"
+    with wave.open(str(audio_path), "rb") as source:
+        sample_rate = source.getframerate()
+        frame_count = source.getnframes()
+        source_format = {"sample_rate": sample_rate, "frame_count": frame_count,
+                         "channels": source.getnchannels(), "sample_width_bytes": source.getsampwidth()}
     payload = {
         "audio_path": str(audio_path),
-        "audio_duration_sec": round(audio_duration_sec, 3),
+        "audio_duration_sec": audio_duration_sec,
+        "source_format": source_format,
         "output_prefix": output_prefix,
         "config": asdict(config),
         "raw_segments": [
@@ -274,7 +280,7 @@ def export_segments_manifest(
                 "index": index,
                 "start_sec": segment.start_sec,
                 "end_sec": segment.end_sec,
-                "duration_sec": round(segment.duration_sec, 3),
+                "duration_sec": segment.duration_sec,
             }
             for index, segment in enumerate(raw_segments, start=1)
         ],
@@ -284,7 +290,9 @@ def export_segments_manifest(
                 "segment_name": f"{output_prefix}-{index:03d}.wav",
                 "start_sec": segment.start_sec,
                 "end_sec": segment.end_sec,
-                "duration_sec": round(segment.duration_sec, 3),
+                "duration_sec": segment.duration_sec,
+                "start_frame": max(0, math.floor(segment.start_sec * sample_rate)),
+                "end_frame": min(frame_count, math.ceil(segment.end_sec * sample_rate)),
             }
             for index, segment in enumerate(final_segments, start=1)
         ],
@@ -306,9 +314,9 @@ def export_segments_csv(output_dir: Path, segments: List[Segment], output_prefix
             writer.writerow(
                 [
                     f"{output_prefix}-{index:03d}.wav",
-                    f"{segment.start_sec:.3f}",
-                    f"{segment.end_sec:.3f}",
-                    f"{segment.duration_sec:.3f}",
+                    repr(segment.start_sec),
+                    repr(segment.end_sec),
+                    repr(segment.duration_sec),
                 ]
             )
     return csv_path
