@@ -370,6 +370,8 @@ def run_pipeline(
     output_dir: Path,
     config: VadSplitConfig,
     output_prefix: str,
+    *,
+    dry_run: bool = False,
 ) -> None:
     validate_config(config)
 
@@ -378,7 +380,7 @@ def run_pipeline(
 
     output_prefix = sanitize_output_prefix(output_prefix)
     audio_duration_sec = get_wav_duration_sec(audio_path)
-    if output_dir.exists():
+    if output_dir.exists() and not dry_run:
         if not output_dir.is_dir():
             raise NotADirectoryError(f"输出路径不是文件夹: {output_dir}")
         output_pattern = re.compile(rf"{re.escape(output_prefix)}-(\d+)\.wav", re.IGNORECASE)
@@ -389,6 +391,12 @@ def run_pipeline(
 
     raw_segments = detect_speech_segments(audio_path, config)
     final_segments = post_process_segments(raw_segments, config, audio_duration_sec)
+
+    if dry_run:
+        print(f"预览 {audio_path}: 原始 {len(raw_segments)} 段，最终 {len(final_segments)} 段；不会写入输出文件。")
+        for index, segment in enumerate(final_segments, start=1):
+            print(f"  {index:03d}: {segment.start_sec:.6f} - {segment.end_sec:.6f} 秒")
+        return
 
     output_dir.mkdir(parents=True, exist_ok=True)
     # Finish every export in a temporary directory before publishing any results.
@@ -450,6 +458,7 @@ def run_folder_pipeline(
     output_root: Path = None,
     *,
     continue_on_error: bool = False,
+    dry_run: bool = False,
 ) -> None:
     validate_config(config)
 
@@ -477,6 +486,7 @@ def run_folder_pipeline(
                 output_dir=output_root / audio_path.stem,
                 config=config,
                 output_prefix=audio_path.stem,
+                dry_run=dry_run,
             )
         except (OSError, ValueError, RuntimeError) as exc:
             if not continue_on_error:
@@ -495,6 +505,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     source.add_argument("--audio", help="输入 WAV 音频路径")
     source.add_argument("--folder", help="批量处理文件夹中的 WAV 音频（不递归）")
     parser.add_argument("--continue-on-error", action="store_true", help="文件夹模式中记录失败并继续处理后续音频，存在失败时仍返回非零状态码")
+    parser.add_argument("--dry-run", action="store_true", help="预览检测和后处理结果，不创建目录、音频或清单文件")
     parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
@@ -538,10 +549,10 @@ def main(argv: List[str] = None) -> int:
         if args.audio:
             audio_path = Path(args.audio).expanduser()
             output_dir = Path(args.output_dir).expanduser() if args.output_dir else audio_path.parent / "vad_output" / audio_path.stem
-            run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem)
+            run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem, dry_run=args.dry_run)
         elif args.folder:
             output_root = Path(args.output_dir).expanduser() if args.output_dir else None
-            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root, continue_on_error=args.continue_on_error)
+            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root, continue_on_error=args.continue_on_error, dry_run=args.dry_run)
         else:
             folder_input = input("请输入文件夹地址：").strip().strip('"')
             if not folder_input:
