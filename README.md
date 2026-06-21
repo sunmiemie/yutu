@@ -19,6 +19,8 @@ JSON/CSV 清单保留时间戳的浮点精度；JSON 还记录原始 WAV 格式�
 
 在单文件或文件夹命令中增加 `--dry-run` 可预览最终时间范围，不创建任何输出文件。预览仍执行 VAD 检测，适合先调整阈值与补边参数，也可以在已有导出结果时使用。
 
+人工修订时间戳后，可用 `--audio sample.wav --segments-json labels.json` 离线切分，无需安装或加载 VAD。JSON 格式为 `[{"start_sec": 0.25, "end_sec": 0.75}]`，也支持读取之前清单中的 `raw_segments`；非法或越界范围会报错。合并、补边和最短时长过滤仍按参数执行，精确采用标注范围时可指定 `--extra-pad-sec 0 --absolute-min-duration-sec 0`。可同时使用 `--dry-run`。
+
 ```bash
 python -m unittest discover -s tests -v
 ```

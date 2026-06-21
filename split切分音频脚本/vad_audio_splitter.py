@@ -149,6 +149,27 @@ def normalize_segments(segments: List[Segment], audio_duration_sec: float) -> Li
     return normalized
 
 
+def load_segments_json(path: Path, audio_duration_sec: float) -> List[Segment]:
+    """Import reviewed timestamps; keep malformed manual annotations visible as errors."""
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    if isinstance(payload, dict):
+        payload = payload.get("raw_segments")
+    if not isinstance(payload, list):
+        raise ValueError("时间戳 JSON 必须为片段数组，或包含 raw_segments 数组的清单。")
+    segments = []
+    for index, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"第 {index} 个时间戳必须是对象。")
+        start, end = item.get("start_sec"), item.get("end_sec")
+        if any(isinstance(value, bool) or not isinstance(value, (int, float))
+               or not math.isfinite(value) for value in (start, end)):
+            raise ValueError(f"第 {index} 个时间戳必须包含有限数值 start_sec 和 end_sec。")
+        if not 0 <= start < end <= audio_duration_sec:
+            raise ValueError(f"第 {index} 个时间戳必须位于音频范围内且结束时间晚于开始时间。")
+        segments.append(Segment(start, end))
+    return segments
+
+
 def merge_close_segments(segments: List[Segment], merge_gap_sec: float) -> List[Segment]:
     if merge_gap_sec <= 0:
         return [Segment(item.start_sec, item.end_sec) for item in segments]
@@ -372,6 +393,7 @@ def run_pipeline(
     output_prefix: str,
     *,
     dry_run: bool = False,
+    segments_json: Path = None,
 ) -> None:
     validate_config(config)
 
@@ -389,7 +411,8 @@ def run_pipeline(
             if output_pattern.fullmatch(existing.name) or existing.name.lower() in manifest_names:
                 raise FileExistsError(f"输出已存在，请选择新目录或不同前缀: {existing}")
 
-    raw_segments = detect_speech_segments(audio_path, config)
+    raw_segments = (load_segments_json(segments_json, audio_duration_sec) if segments_json is not None
+                    else detect_speech_segments(audio_path, config))
     final_segments = post_process_segments(raw_segments, config, audio_duration_sec)
 
     if dry_run:
@@ -506,6 +529,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     source.add_argument("--folder", help="批量处理文件夹中的 WAV 音频（不递归）")
     parser.add_argument("--continue-on-error", action="store_true", help="文件夹模式中记录失败并继续处理后续音频，存在失败时仍返回非零状态码")
     parser.add_argument("--dry-run", action="store_true", help="预览检测和后处理结果，不创建目录、音频或清单文件")
+    parser.add_argument("--segments-json", help="单文件模式导入人工审核的秒级时间戳 JSON，跳过 VAD 模型")
     parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
@@ -531,6 +555,8 @@ def main(argv: List[str] = None) -> int:
         parser.error("--output-prefix 仅适用于 --audio；文件夹模式按各音频文件名命名。")
     if args.continue_on_error and not args.folder:
         parser.error("--continue-on-error 仅适用于 --folder。")
+    if args.segments_json and not args.audio:
+        parser.error("--segments-json 仅适用于 --audio。")
 
     config = VadSplitConfig(
         sampling_rate=args.sampling_rate,
@@ -549,7 +575,9 @@ def main(argv: List[str] = None) -> int:
         if args.audio:
             audio_path = Path(args.audio).expanduser()
             output_dir = Path(args.output_dir).expanduser() if args.output_dir else audio_path.parent / "vad_output" / audio_path.stem
-            run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem, dry_run=args.dry_run)
+            run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem,
+                         dry_run=args.dry_run,
+                         segments_json=Path(args.segments_json).expanduser() if args.segments_json else None)
         elif args.folder:
             output_root = Path(args.output_dir).expanduser() if args.output_dir else None
             run_folder_pipeline(Path(args.folder).expanduser(), config, output_root, continue_on_error=args.continue_on_error, dry_run=args.dry_run)
