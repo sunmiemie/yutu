@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import re
 import shutil
 import sys
@@ -465,7 +466,19 @@ def run_pipeline(
         print(f"  - {file_path}")
 
 
-def find_wav_files(folder_path: Path) -> List[Path]:
+def find_wav_files(folder_path: Path, *, recursive: bool = False, exclude_dir: Path = None) -> List[Path]:
+    if recursive:
+        excluded = exclude_dir.resolve() if exclude_dir is not None else None
+        files = []
+        for directory, subdirectories, names in os.walk(folder_path, followlinks=False):
+            parent = Path(directory)
+            subdirectories[:] = sorted(name for name in subdirectories
+                                       if name.lower() != "vad_output"
+                                       and (parent / name).resolve() != excluded
+                                       and not (parent / name).is_symlink())
+            files.extend(parent / name for name in names
+                         if Path(name).suffix.lower() == ".wav" and (parent / name).is_file())
+        return sorted(files)
     return sorted(
         [
             path
@@ -482,6 +495,7 @@ def run_folder_pipeline(
     *,
     continue_on_error: bool = False,
     dry_run: bool = False,
+    recursive: bool = False,
 ) -> None:
     validate_config(config)
 
@@ -490,12 +504,14 @@ def run_folder_pipeline(
     if not folder_path.is_dir():
         raise NotADirectoryError(f"这不是文件夹: {folder_path}")
 
-    wav_files = find_wav_files(folder_path)
+    output_root = output_root if output_root is not None else folder_path / "vad_output"
+    if recursive and output_root.resolve() == folder_path.resolve():
+        raise ValueError("递归模式的输出目录不能与输入目录相同。")
+    wav_files = find_wav_files(folder_path, recursive=recursive, exclude_dir=output_root)
     if not wav_files:
         print("未找到 .wav 音频文件。")
         return
 
-    output_root = output_root if output_root is not None else folder_path / "vad_output"
     print(f"发现 {len(wav_files)} 个 WAV 文件。")
     failures = []
 
@@ -506,7 +522,7 @@ def run_folder_pipeline(
         try:
             run_pipeline(
                 audio_path=audio_path,
-                output_dir=output_root / audio_path.stem,
+                output_dir=output_root / audio_path.relative_to(folder_path).parent / audio_path.stem,
                 config=config,
                 output_prefix=audio_path.stem,
                 dry_run=dry_run,
@@ -526,7 +542,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="使用 Silero VAD 检测语音并切分 WAV 音频。")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--audio", help="输入 WAV 音频路径")
-    source.add_argument("--folder", help="批量处理文件夹中的 WAV 音频（不递归）")
+    source.add_argument("--folder", help="批量处理文件夹中的 WAV 音频（默认不递归）")
+    parser.add_argument("--recursive", action="store_true", help="文件夹模式递归处理并保留相对目录，跳过输出目录与 vad_output")
     parser.add_argument("--continue-on-error", action="store_true", help="文件夹模式中记录失败并继续处理后续音频，存在失败时仍返回非零状态码")
     parser.add_argument("--dry-run", action="store_true", help="预览检测和后处理结果，不创建目录、音频或清单文件")
     parser.add_argument("--segments-json", help="单文件模式导入人工审核的秒级时间戳 JSON，跳过 VAD 模型")
@@ -557,6 +574,8 @@ def main(argv: List[str] = None) -> int:
         parser.error("--continue-on-error 仅适用于 --folder。")
     if args.segments_json and not args.audio:
         parser.error("--segments-json 仅适用于 --audio。")
+    if args.recursive and not args.folder:
+        parser.error("--recursive 仅适用于 --folder。")
 
     config = VadSplitConfig(
         sampling_rate=args.sampling_rate,
@@ -580,7 +599,9 @@ def main(argv: List[str] = None) -> int:
                          segments_json=Path(args.segments_json).expanduser() if args.segments_json else None)
         elif args.folder:
             output_root = Path(args.output_dir).expanduser() if args.output_dir else None
-            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root, continue_on_error=args.continue_on_error, dry_run=args.dry_run)
+            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root,
+                                continue_on_error=args.continue_on_error, dry_run=args.dry_run,
+                                recursive=args.recursive)
         else:
             folder_input = input("请输入文件夹地址：").strip().strip('"')
             if not folder_input:

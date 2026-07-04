@@ -21,6 +21,8 @@ JSON/CSV 清单保留时间戳的浮点精度；JSON 还记录原始 WAV 格式�
 
 人工修订时间戳后，可用 `--audio sample.wav --segments-json labels.json` 离线切分，无需安装或加载 VAD。JSON 格式为 `[{"start_sec": 0.25, "end_sec": 0.75}]`，也支持读取之前清单中的 `raw_segments`；非法或越界范围会报错。合并、补边和最短时长过滤仍按参数执行，精确采用标注范围时可指定 `--extra-pad-sec 0 --absolute-min-duration-sec 0`。可同时使用 `--dry-run`。
 
+`--folder 录音 --recursive --output-dir 结果` 会按相对目录保存，避免不同子目录的同名录音混在一起。扫描跳过指定输出目录、名为 `vad_output` 的子目录和目录符号链接；递归模式不允许输入、输出目录相同。
+
 ```bash
 python -m unittest discover -s tests -v
 ```
