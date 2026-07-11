@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import os
@@ -283,6 +284,8 @@ def export_segments_manifest(
     config: VadSplitConfig,
     output_prefix: str,
     audio_duration_sec: float,
+    source_fingerprint: dict = None,
+    segment_source: dict = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / f"{output_prefix}_vad_segments.json"
@@ -295,6 +298,8 @@ def export_segments_manifest(
         "audio_path": str(audio_path),
         "audio_duration_sec": audio_duration_sec,
         "source_format": source_format,
+        "source_fingerprint": source_fingerprint or fingerprint_file(audio_path),
+        "segment_source": segment_source or {"kind": "vad"},
         "output_prefix": output_prefix,
         "config": asdict(config),
         "raw_segments": [
@@ -342,6 +347,16 @@ def export_segments_csv(output_dir: Path, segments: List[Segment], output_prefix
                 ]
             )
     return csv_path
+
+
+def fingerprint_file(path: Path) -> dict:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    return {"sha256": digest.hexdigest(), "size_bytes": size}
 
 
 def split_wav_by_segments(
@@ -412,6 +427,11 @@ def run_pipeline(
             if output_pattern.fullmatch(existing.name) or existing.name.lower() in manifest_names:
                 raise FileExistsError(f"输出已存在，请选择新目录或不同前缀: {existing}")
 
+    source_fingerprint = fingerprint_file(audio_path) if not dry_run else None
+    segment_source = {"kind": "vad"}
+    if segments_json is not None:
+        segment_source = {"kind": "imported", "path": str(segments_json),
+                          **fingerprint_file(segments_json)}
     raw_segments = (load_segments_json(segments_json, audio_duration_sec) if segments_json is not None
                     else detect_speech_segments(audio_path, config))
     final_segments = post_process_segments(raw_segments, config, audio_duration_sec)
@@ -436,8 +456,16 @@ def run_pipeline(
             config=config,
             output_prefix=output_prefix,
             audio_duration_sec=audio_duration_sec,
+            source_fingerprint=source_fingerprint,
+            segment_source=segment_source,
         )
         staged_csv = export_segments_csv(staging_dir, final_segments, output_prefix)
+        if fingerprint_file(audio_path) != source_fingerprint:
+            raise ValueError("输入音频在处理期间发生变化，未发布输出文件，请重试。")
+        if segments_json is not None and fingerprint_file(segments_json) != {
+            key: segment_source[key] for key in ("sha256", "size_bytes")
+        }:
+            raise ValueError("时间戳 JSON 在处理期间发生变化，未发布输出文件，请重试。")
         published: List[Path] = []
         try:
             for staged_file in [*staged_wavs, staged_manifest, staged_csv]:
