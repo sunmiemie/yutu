@@ -286,6 +286,7 @@ def export_segments_manifest(
     audio_duration_sec: float,
     source_fingerprint: dict = None,
     segment_source: dict = None,
+    output_fingerprints: dict = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / f"{output_prefix}_vad_segments.json"
@@ -300,6 +301,7 @@ def export_segments_manifest(
         "source_format": source_format,
         "source_fingerprint": source_fingerprint or fingerprint_file(audio_path),
         "segment_source": segment_source or {"kind": "vad"},
+        "output_fingerprints": output_fingerprints or {},
         "output_prefix": output_prefix,
         "config": asdict(config),
         "raw_segments": [
@@ -359,6 +361,37 @@ def fingerprint_file(path: Path) -> dict:
     return {"sha256": digest.hexdigest(), "size_bytes": size}
 
 
+def can_resume_export(audio_path: Path, output_dir: Path, config: VadSplitConfig,
+                      output_prefix: str, segments_json: Path = None) -> bool:
+    """Skip only complete matching exports; never repair or overwrite a partial result."""
+    manifest_path = output_dir / f"{output_prefix}_vad_segments.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if (manifest["config"] != asdict(config) or manifest["output_prefix"] != output_prefix
+                or manifest["source_fingerprint"] != fingerprint_file(audio_path)):
+            return False
+        source = manifest["segment_source"]
+        if segments_json is None:
+            if source != {"kind": "vad"}:
+                return False
+        elif source != {"kind": "imported", "path": str(segments_json), **fingerprint_file(segments_json)}:
+            return False
+        segments = manifest["final_segments"]
+        if not isinstance(segments, list):
+            return False
+        expected = {f"{output_prefix}-{index:03d}.wav" for index in range(1, len(segments) + 1)}
+        if {item["segment_name"] for item in segments} != expected:
+            return False
+        expected.add(f"{output_prefix}_vad_segments.csv")
+        fingerprints = manifest["output_fingerprints"]
+        if not isinstance(fingerprints, dict) or set(fingerprints) != expected:
+            return False
+        return all(not (output_dir / name).is_symlink()
+                   and fingerprint_file(output_dir / name) == fingerprints[name] for name in expected)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def split_wav_by_segments(
     audio_path: Path,
     output_dir: Path,
@@ -410,6 +443,7 @@ def run_pipeline(
     *,
     dry_run: bool = False,
     segments_json: Path = None,
+    skip_existing: bool = False,
 ) -> None:
     validate_config(config)
 
@@ -418,6 +452,9 @@ def run_pipeline(
 
     output_prefix = sanitize_output_prefix(output_prefix)
     audio_duration_sec = get_wav_duration_sec(audio_path)
+    if skip_existing and not dry_run and can_resume_export(audio_path, output_dir, config, output_prefix, segments_json):
+        print(f"跳过已校验的完整结果: {audio_path}")
+        return
     if output_dir.exists() and not dry_run:
         if not output_dir.is_dir():
             raise NotADirectoryError(f"输出路径不是文件夹: {output_dir}")
@@ -448,6 +485,7 @@ def run_pipeline(
     with tempfile.TemporaryDirectory(prefix=".vad-", dir=output_dir) as temporary:
         staging_dir = Path(temporary)
         staged_wavs = split_wav_by_segments(audio_path, staging_dir, final_segments, output_prefix)
+        staged_csv = export_segments_csv(staging_dir, final_segments, output_prefix)
         staged_manifest = export_segments_manifest(
             audio_path=audio_path,
             output_dir=staging_dir,
@@ -458,8 +496,8 @@ def run_pipeline(
             audio_duration_sec=audio_duration_sec,
             source_fingerprint=source_fingerprint,
             segment_source=segment_source,
+            output_fingerprints={path.name: fingerprint_file(path) for path in [*staged_wavs, staged_csv]},
         )
-        staged_csv = export_segments_csv(staging_dir, final_segments, output_prefix)
         if fingerprint_file(audio_path) != source_fingerprint:
             raise ValueError("输入音频在处理期间发生变化，未发布输出文件，请重试。")
         if segments_json is not None and fingerprint_file(segments_json) != {
@@ -524,6 +562,7 @@ def run_folder_pipeline(
     continue_on_error: bool = False,
     dry_run: bool = False,
     recursive: bool = False,
+    skip_existing: bool = False,
 ) -> None:
     validate_config(config)
 
@@ -554,6 +593,7 @@ def run_folder_pipeline(
                 config=config,
                 output_prefix=audio_path.stem,
                 dry_run=dry_run,
+                skip_existing=skip_existing,
             )
         except (OSError, ValueError, RuntimeError) as exc:
             if not continue_on_error:
@@ -575,6 +615,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--continue-on-error", action="store_true", help="文件夹模式中记录失败并继续处理后续音频，存在失败时仍返回非零状态码")
     parser.add_argument("--dry-run", action="store_true", help="预览检测和后处理结果，不创建目录、音频或清单文件")
     parser.add_argument("--segments-json", help="单文件模式导入人工审核的秒级时间戳 JSON，跳过 VAD 模型")
+    parser.add_argument("--skip-existing", action="store_true", help="校验源文件、参数和完整输出指纹后跳过已完成音频；不覆盖不匹配的结果")
     parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
@@ -624,12 +665,13 @@ def main(argv: List[str] = None) -> int:
             output_dir = Path(args.output_dir).expanduser() if args.output_dir else audio_path.parent / "vad_output" / audio_path.stem
             run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem,
                          dry_run=args.dry_run,
-                         segments_json=Path(args.segments_json).expanduser() if args.segments_json else None)
+                         segments_json=Path(args.segments_json).expanduser() if args.segments_json else None,
+                         skip_existing=args.skip_existing)
         elif args.folder:
             output_root = Path(args.output_dir).expanduser() if args.output_dir else None
             run_folder_pipeline(Path(args.folder).expanduser(), config, output_root,
                                 continue_on_error=args.continue_on_error, dry_run=args.dry_run,
-                                recursive=args.recursive)
+                                recursive=args.recursive, skip_existing=args.skip_existing)
         else:
             folder_input = input("请输入文件夹地址：").strip().strip('"')
             if not folder_input:
