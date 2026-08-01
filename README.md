@@ -27,6 +27,8 @@ JSON/CSV 清单保留时间戳的浮点精度；JSON 还记录原始 WAV 格式�
 
 批处理可增加 `--skip-existing` 续跑：仅在源文件、参数、标注来源及所有 WAV/CSV 输出的指纹均匹配时跳过模型和导出。损坏、缺失或参数不同的旧结果仍报冲突，不会覆盖；旧版本没有输出指纹的清单也不会自动跳过。`--dry-run` 始终重新预览。
 
+`--config preset.json` 读取可复用的参数预设，例如 `{"threshold": 0.7, "extra_pad_sec": 0.1}`。字段名采用 JSON 清单 `config` 中的下划线写法，未知字段、布尔值和非法数值会被拒绝；显式命令行参数覆盖预设，未给出的字段使用默认值。
+
 ```bash
 python -m unittest discover -s tests -v
 ```

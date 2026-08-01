@@ -70,6 +70,18 @@ def validate_config(config: VadSplitConfig) -> None:
         raise ValueError("absolute_min_duration_sec 不能小于 0。")
 
 
+def load_config_json(path: Path) -> VadSplitConfig:
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, dict):
+        raise ValueError("参数预设必须是 JSON 对象。")
+    unknown = set(payload) - set(asdict(VadSplitConfig()))
+    if unknown:
+        raise ValueError(f"参数预设包含未知字段: {', '.join(sorted(unknown))}")
+    config = VadSplitConfig(**payload)
+    validate_config(config)
+    return config
+
+
 def get_wav_duration_sec(audio_path: Path) -> float:
     if not audio_path.is_file():
         raise ValueError(f"输入路径不是音频文件: {audio_path}")
@@ -616,6 +628,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="预览检测和后处理结果，不创建目录、音频或清单文件")
     parser.add_argument("--segments-json", help="单文件模式导入人工审核的秒级时间戳 JSON，跳过 VAD 模型")
     parser.add_argument("--skip-existing", action="store_true", help="校验源文件、参数和完整输出指纹后跳过已完成音频；不覆盖不匹配的结果")
+    parser.add_argument("--config", help="读取 JSON 参数预设；显式命令行参数优先")
     parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
@@ -634,6 +647,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: List[str] = None) -> int:
     parser = build_arg_parser()
     arguments = sys.argv[1:] if argv is None else argv
+    preset_parser = argparse.ArgumentParser(add_help=False)
+    preset_parser.add_argument("--config")
+    preset_args, _ = preset_parser.parse_known_args(arguments)
+    if preset_args.config:
+        try:
+            parser.set_defaults(**asdict(load_config_json(Path(preset_args.config).expanduser())))
+        except (OSError, ValueError) as exc:
+            print(f"错误: {exc}", file=sys.stderr)
+            return 1
     args = parser.parse_args(arguments)
     if arguments and not (args.audio or args.folder):
         parser.error("请指定 --audio 或 --folder。")
