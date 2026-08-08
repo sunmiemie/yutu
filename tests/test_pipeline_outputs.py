@@ -41,7 +41,7 @@ class PipelineOutputTests(unittest.TestCase):
         with patch.object(splitter, "detect_speech_segments", return_value=[splitter.Segment(0, 1)]):
             with self.assertRaisesRegex(ValueError, "数据不完整"):
                 self.run_pipeline()
-        self.assertEqual(list(self.output.iterdir()), [])
+        self.assertFalse(self.output.exists())
 
     def test_successful_export_has_matching_audio_and_manifest(self):
         with patch.object(splitter, "detect_speech_segments", return_value=[splitter.Segment(0.25, 0.75)]):

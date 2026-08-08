@@ -91,6 +91,10 @@ def get_wav_duration_sec(audio_path: Path) -> float:
         with wave.open(str(audio_path), "rb") as wav_reader:
             frame_rate = wav_reader.getframerate()
             total_frames = wav_reader.getnframes()
+            if total_frames > 0:
+                wav_reader.setpos(total_frames - 1)
+                if len(wav_reader.readframes(1)) != wav_reader.getnchannels() * wav_reader.getsampwidth():
+                    raise ValueError(f"WAV 音频数据不完整: {audio_path}")
     except (wave.Error, EOFError) as exc:
         raise ValueError(f"无法读取 PCM WAV 音频: {audio_path}") from exc
     if frame_rate <= 0 or total_frames <= 0:
