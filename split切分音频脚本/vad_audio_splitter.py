@@ -414,40 +414,47 @@ def split_wav_by_segments(
     segments: List[Segment],
     output_prefix: str,
 ) -> List[Path]:
-    if audio_path.suffix.lower() != ".wav":
-        raise ValueError("当前切分实现仅支持 WAV 文件，请先将音频转换为 .wav 格式。")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
+    get_wav_duration_sec(audio_path)
+    output_prefix = sanitize_output_prefix(output_prefix)
+    for segment in segments:
+        if any(isinstance(value, bool) or not isinstance(value, (int, float))
+               or not math.isfinite(value) for value in (segment.start_sec, segment.end_sec)):
+            raise ValueError("片段起止时间必须是有限数值。")
     saved_files: List[Path] = []
-
     with wave.open(str(audio_path), "rb") as wav_reader:
         params = wav_reader.getparams()
-        frame_rate = wav_reader.getframerate()
-        total_frames = wav_reader.getnframes()
-
+        frame_rate, total_frames = params.framerate, params.nframes
+        planned = []
         for index, segment in enumerate(segments, start=1):
             start_frame = max(0, math.floor(segment.start_sec * frame_rate))
             end_frame = min(total_frames, math.ceil(segment.end_sec * frame_rate))
-
-            if end_frame <= start_frame:
-                continue
-
-            wav_reader.setpos(start_frame)
-            output_path = output_dir / f"{output_prefix}-{index:03d}.wav"
-            with wave.open(str(output_path), "wb") as wav_writer:
-                wav_writer.setparams(params)
-                remaining = end_frame - start_frame
-                frame_size = params.nchannels * params.sampwidth
-                while remaining:
-                    frame_count = min(remaining, 65536)
-                    frames = wav_reader.readframes(frame_count)
-                    if len(frames) != frame_count * frame_size:
-                        raise ValueError(f"WAV 音频数据不完整: {audio_path}")
-                    wav_writer.writeframesraw(frames)
-                    remaining -= frame_count
-
-            saved_files.append(output_path)
-
+            if end_frame > start_frame:
+                output_path = output_dir / f"{output_prefix}-{index:03d}.wav"
+                if output_path.exists():
+                    raise FileExistsError(f"输出已存在: {output_path}")
+                planned.append((start_frame, end_frame, output_path))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            for start_frame, end_frame, output_path in planned:
+                wav_reader.setpos(start_frame)
+                # Exclusive creation protects both direct library callers and races.
+                with output_path.open("xb") as output:
+                    saved_files.append(output_path)
+                    with wave.open(output, "wb") as wav_writer:
+                        wav_writer.setparams(params)
+                        remaining = end_frame - start_frame
+                        frame_size = params.nchannels * params.sampwidth
+                        while remaining:
+                            frame_count = min(remaining, 65536)
+                            frames = wav_reader.readframes(frame_count)
+                            if len(frames) != frame_count * frame_size:
+                                raise ValueError(f"WAV 音频数据不完整: {audio_path}")
+                            wav_writer.writeframesraw(frames)
+                            remaining -= frame_count
+        except BaseException:
+            for path in saved_files:
+                path.unlink()
+            raise
     return saved_files
 
 
