@@ -29,6 +29,8 @@ JSON/CSV 清单保留时间戳的浮点精度；JSON 还记录原始 WAV 格式�
 
 `--config preset.json` 读取可复用的参数预设，例如 `{"threshold": 0.7, "extra_pad_sec": 0.1}`。字段名采用 JSON 清单 `config` 中的下划线写法，未知字段、布尔值和非法数值会被拒绝；显式命令行参数覆盖预设，未给出的字段使用默认值。
 
+`--summary-json batch.json` 可额外生成机器可读批次报告，记录退出状态和每个已尝试文件的 `exported`、`skipped`、`previewed` 或 `failed` 状态。与 `--continue-on-error` 配合时，报告同时保留成功项和失败原因，命令仍返回非零状态。已有报告不会覆盖。与 `--dry-run` 同时使用时，只写显式请求的批次报告，不写音频或片段清单。Python 调用方也可直接读取两个 pipeline 函数返回的结果。
+
 ```bash
 python -m unittest discover -s tests -v
 ```

@@ -467,7 +467,7 @@ def run_pipeline(
     dry_run: bool = False,
     segments_json: Path = None,
     skip_existing: bool = False,
-) -> None:
+) -> dict:
     validate_config(config)
 
     if not audio_path.exists():
@@ -477,7 +477,7 @@ def run_pipeline(
     audio_duration_sec = get_wav_duration_sec(audio_path)
     if skip_existing and not dry_run and can_resume_export(audio_path, output_dir, config, output_prefix, segments_json):
         print(f"跳过已校验的完整结果: {audio_path}")
-        return
+        return {"audio_path": str(audio_path), "status": "skipped", "output_dir": str(output_dir)}
     if output_dir.exists() and not dry_run:
         if not output_dir.is_dir():
             raise NotADirectoryError(f"输出路径不是文件夹: {output_dir}")
@@ -500,7 +500,9 @@ def run_pipeline(
         print(f"预览 {audio_path}: 原始 {len(raw_segments)} 段，最终 {len(final_segments)} 段；不会写入输出文件。")
         for index, segment in enumerate(final_segments, start=1):
             print(f"  {index:03d}: {segment.start_sec:.6f} - {segment.end_sec:.6f} 秒")
-        return
+        return {"audio_path": str(audio_path), "status": "previewed",
+                "raw_segment_count": len(raw_segments), "final_segment_count": len(final_segments),
+                "segments": [asdict(segment) for segment in final_segments]}
 
     output_dir.mkdir(parents=True, exist_ok=True)
     # Finish every export in a temporary directory before publishing any results.
@@ -553,6 +555,9 @@ def run_pipeline(
     print(f"已输出音频片段数: {len(saved_files)}")
     for file_path in saved_files:
         print(f"  - {file_path}")
+    return {"audio_path": str(audio_path), "status": "exported", "output_dir": str(output_dir),
+            "raw_segment_count": len(raw_segments), "final_segment_count": len(final_segments),
+            "manifest_path": str(manifest_path), "csv_path": str(csv_path)}
 
 
 def find_wav_files(folder_path: Path, *, recursive: bool = False, exclude_dir: Path = None) -> List[Path]:
@@ -586,7 +591,7 @@ def run_folder_pipeline(
     dry_run: bool = False,
     recursive: bool = False,
     skip_existing: bool = False,
-) -> None:
+) -> List[dict]:
     validate_config(config)
 
     if not folder_path.exists():
@@ -600,17 +605,18 @@ def run_folder_pipeline(
     wav_files = find_wav_files(folder_path, recursive=recursive, exclude_dir=output_root)
     if not wav_files:
         print("未找到 .wav 音频文件。")
-        return
+        return []
 
     print(f"发现 {len(wav_files)} 个 WAV 文件。")
     failures = []
+    results = []
 
     for index, audio_path in enumerate(wav_files, start=1):
         print("\n===================================")
         print(f"[{index}/{len(wav_files)}] 开始处理: {audio_path.name}")
         print("===================================")
         try:
-            run_pipeline(
+            result = run_pipeline(
                 audio_path=audio_path,
                 output_dir=output_root / audio_path.relative_to(folder_path).parent / audio_path.stem,
                 config=config,
@@ -618,15 +624,21 @@ def run_folder_pipeline(
                 dry_run=dry_run,
                 skip_existing=skip_existing,
             )
+            results.append(result)
         except (OSError, ValueError, RuntimeError) as exc:
+            results.append({"audio_path": str(audio_path), "status": "failed", "error": str(exc)})
             if not continue_on_error:
+                exc.batch_results = results
                 raise
             failures.append(audio_path.name)
             print(f"处理失败 {audio_path.name}: {exc}", file=sys.stderr)
 
     print(f"批量处理完成：成功 {len(wav_files) - len(failures)} 个，失败 {len(failures)} 个。")
     if failures:
-        raise RuntimeError(f"以下音频处理失败: {', '.join(failures)}")
+        error = RuntimeError(f"以下音频处理失败: {', '.join(failures)}")
+        error.batch_results = results
+        raise error
+    return results
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -640,6 +652,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--segments-json", help="单文件模式导入人工审核的秒级时间戳 JSON，跳过 VAD 模型")
     parser.add_argument("--skip-existing", action="store_true", help="校验源文件、参数和完整输出指纹后跳过已完成音频；不覆盖不匹配的结果")
     parser.add_argument("--config", help="读取 JSON 参数预设；显式命令行参数优先")
+    parser.add_argument("--summary-json", help="将逐文件成功、跳过或失败结果写入新的 JSON 文件，供批处理系统读取")
     parser.add_argument("--output-dir", help="输出目录；默认在输入文件夹内的 vad_output 中按音频名保存")
     parser.add_argument("--sampling-rate", type=int, default=16000, help="采样率，通常使用 8000 或 16000")
     parser.add_argument("--threshold", type=float, default=0.5, help="语音判定阈值，值越大越严格")
@@ -692,17 +705,23 @@ def main(argv: List[str] = None) -> int:
         absolute_min_duration_sec=args.absolute_min_duration_sec,
     )
 
+    results = []
+    exit_code = 0
+    summary_path = Path(args.summary_json).expanduser() if args.summary_json else None
+    if summary_path is not None and summary_path.exists():
+        print(f"错误: 批次报告已存在，不会覆盖: {summary_path}", file=sys.stderr)
+        return 1
     try:
         if args.audio:
             audio_path = Path(args.audio).expanduser()
             output_dir = Path(args.output_dir).expanduser() if args.output_dir else audio_path.parent / "vad_output" / audio_path.stem
-            run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem,
+            results = [run_pipeline(audio_path, output_dir, config, args.output_prefix or audio_path.stem,
                          dry_run=args.dry_run,
                          segments_json=Path(args.segments_json).expanduser() if args.segments_json else None,
-                         skip_existing=args.skip_existing)
+                         skip_existing=args.skip_existing)]
         elif args.folder:
             output_root = Path(args.output_dir).expanduser() if args.output_dir else None
-            run_folder_pipeline(Path(args.folder).expanduser(), config, output_root,
+            results = run_folder_pipeline(Path(args.folder).expanduser(), config, output_root,
                                 continue_on_error=args.continue_on_error, dry_run=args.dry_run,
                                 recursive=args.recursive, skip_existing=args.skip_existing)
         else:
@@ -710,11 +729,28 @@ def main(argv: List[str] = None) -> int:
             if not folder_input:
                 print("未输入文件夹地址，程序结束。")
                 return 0
-            run_folder_pipeline(Path(folder_input).expanduser(), config)
+            results = run_folder_pipeline(Path(folder_input).expanduser(), config)
     except (OSError, ValueError, RuntimeError, EOFError) as exc:
         print(f"错误: {exc}", file=sys.stderr)
-        return 1
-    return 0
+        results = getattr(exc, "batch_results", [{"audio_path": args.audio or args.folder,
+                                                   "status": "failed", "error": str(exc)}])
+        exit_code = 1
+    if summary_path is not None:
+        try:
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {"exit_code": exit_code, "results": results}
+            encoded = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            with summary_path.open("xb") as output:
+                try:
+                    output.write(encoded)
+                except BaseException:
+                    output.close()
+                    summary_path.unlink()
+                    raise
+        except (OSError, ValueError) as exc:
+            print(f"错误: 无法写入批次报告: {exc}", file=sys.stderr)
+            exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":
