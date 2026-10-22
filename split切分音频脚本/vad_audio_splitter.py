@@ -292,6 +292,15 @@ def post_process_segments(
     return segments
 
 
+def _seconds_to_frame(seconds: float, sample_rate: int, *, round_up: bool) -> int:
+    position = seconds * sample_rate
+    nearest = round(position)
+    # Restore exact n / sample_rate timestamps without snapping nearby subframe values.
+    if seconds == nearest / sample_rate:
+        return nearest
+    return math.ceil(position) if round_up else math.floor(position)
+
+
 def export_segments_manifest(
     audio_path: Path,
     output_dir: Path,
@@ -336,8 +345,8 @@ def export_segments_manifest(
                 "start_sec": segment.start_sec,
                 "end_sec": segment.end_sec,
                 "duration_sec": segment.duration_sec,
-                "start_frame": max(0, math.floor(segment.start_sec * sample_rate)),
-                "end_frame": min(frame_count, math.ceil(segment.end_sec * sample_rate)),
+                "start_frame": max(0, _seconds_to_frame(segment.start_sec, sample_rate, round_up=False)),
+                "end_frame": min(frame_count, _seconds_to_frame(segment.end_sec, sample_rate, round_up=True)),
             }
             for index, segment in enumerate(final_segments, start=1)
         ],
@@ -426,8 +435,8 @@ def split_wav_by_segments(
         frame_rate, total_frames = params.framerate, params.nframes
         planned = []
         for index, segment in enumerate(segments, start=1):
-            start_frame = max(0, math.floor(segment.start_sec * frame_rate))
-            end_frame = min(total_frames, math.ceil(segment.end_sec * frame_rate))
+            start_frame = max(0, _seconds_to_frame(segment.start_sec, frame_rate, round_up=False))
+            end_frame = min(total_frames, _seconds_to_frame(segment.end_sec, frame_rate, round_up=True))
             if end_frame > start_frame:
                 output_path = output_dir / f"{output_prefix}-{index:03d}.wav"
                 if output_path.exists():

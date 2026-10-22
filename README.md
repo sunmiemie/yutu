@@ -17,6 +17,8 @@ python "split切分音频脚本/vad_audio_splitter.py" --folder "录音" --outpu
 
 JSON/CSV 清单保留时间戳的浮点精度；JSON 还记录原始 WAV 格式与每段实际导出的起止帧（结束帧不包含），便于核对不足 1 毫秒的短片段。
 
+时间戳恰好对应整数采样帧时，导出和清单会保留该边界，避免浮点换算多带入相邻帧；位于两帧之间的时间戳仍向外取整，覆盖指定的完整时间范围。
+
 在单文件或文件夹命令中增加 `--dry-run` 可预览最终时间范围，不创建任何输出文件。预览仍执行 VAD 检测，适合先调整阈值与补边参数，也可以在已有导出结果时使用。
 
 人工修订时间戳后，可用 `--audio sample.wav --segments-json labels.json` 离线切分，无需安装或加载 VAD。JSON 格式为 `[{"start_sec": 0.25, "end_sec": 0.75}]`，也支持读取之前清单中的 `raw_segments`；非法或越界范围会报错。合并、补边和最短时长过滤仍按参数执行，精确采用标注范围时可指定 `--extra-pad-sec 0 --absolute-min-duration-sec 0`。可同时使用 `--dry-run`。
