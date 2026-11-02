@@ -573,7 +573,12 @@ def find_wav_files(folder_path: Path, *, recursive: bool = False, exclude_dir: P
     if recursive:
         excluded = exclude_dir.resolve() if exclude_dir is not None else None
         files = []
-        for directory, subdirectories, names in os.walk(folder_path, followlinks=False):
+
+        def raise_scan_error(error: OSError) -> None:
+            # 不完整的扫描结果不能作为成功批次处理，保留原异常中的目录信息。
+            raise error
+
+        for directory, subdirectories, names in os.walk(folder_path, followlinks=False, onerror=raise_scan_error):
             parent = Path(directory)
             subdirectories[:] = sorted(name for name in subdirectories
                                        if name.lower() != "vad_output"
