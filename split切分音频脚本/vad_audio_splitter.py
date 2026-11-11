@@ -205,6 +205,20 @@ def merge_close_segments(segments: List[Segment], merge_gap_sec: float) -> List[
     return merged
 
 
+def _meets_min_duration(segment: Segment, minimum_sec: float) -> bool:
+    duration = segment.duration_sec
+    if duration >= minimum_sec:
+        return True
+    if duration <= 0:
+        return False
+    # Bound rounding of both timestamps, their subtraction and the threshold.
+    # Keep the timestamps unchanged and avoid a fixed or relative time tolerance.
+    tolerance = sum(math.ulp(value) for value in (
+        segment.start_sec, segment.end_sec, duration, minimum_sec,
+    )) / 2
+    return math.isclose(duration, minimum_sec, rel_tol=0.0, abs_tol=tolerance)
+
+
 def merge_short_segments(segments: List[Segment], min_segment_duration_sec: float) -> List[Segment]:
     if min_segment_duration_sec <= 0:
         return [Segment(item.start_sec, item.end_sec) for item in segments]
@@ -216,7 +230,7 @@ def merge_short_segments(segments: List[Segment], min_segment_duration_sec: floa
 
     while index < len(merged):
         current = merged[index]
-        if current.duration_sec >= min_segment_duration_sec or len(merged) == 1:
+        if _meets_min_duration(current, min_segment_duration_sec) or len(merged) == 1:
             index += 1
             continue
 
@@ -272,7 +286,7 @@ def filter_too_short_segments(
     return [
         Segment(item.start_sec, item.end_sec)
         for item in segments
-        if item.duration_sec >= absolute_min_duration_sec
+        if _meets_min_duration(item, absolute_min_duration_sec)
     ]
 
 
