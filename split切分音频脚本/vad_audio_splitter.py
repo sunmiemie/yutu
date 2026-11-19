@@ -400,6 +400,14 @@ def fingerprint_file(path: Path) -> dict:
     return {"sha256": digest.hexdigest(), "size_bytes": size}
 
 
+def _existing_export_paths(output_dir: Path, output_prefix: str) -> List[Path]:
+    """Use the same output namespace for conflict checks and resume validation."""
+    output_pattern = re.compile(rf"{re.escape(output_prefix)}-(\d+)\.wav", re.IGNORECASE)
+    manifest_names = {f"{output_prefix}_vad_segments.json".lower(), f"{output_prefix}_vad_segments.csv".lower()}
+    return [path for path in output_dir.iterdir()
+            if output_pattern.fullmatch(path.name) or path.name.lower() in manifest_names]
+
+
 def can_resume_export(audio_path: Path, output_dir: Path, config: VadSplitConfig,
                       output_prefix: str, segments_json: Path = None) -> bool:
     """Skip only complete matching exports; never repair or overwrite a partial result."""
@@ -424,6 +432,10 @@ def can_resume_export(audio_path: Path, output_dir: Path, config: VadSplitConfig
         expected.add(f"{output_prefix}_vad_segments.csv")
         fingerprints = manifest["output_fingerprints"]
         if not isinstance(fingerprints, dict) or set(fingerprints) != expected:
+            return False
+        expected_paths = {output_dir / name for name in expected} | {manifest_path}
+        existing_paths = _existing_export_paths(output_dir, output_prefix)
+        if len(existing_paths) != len(expected_paths) or set(existing_paths) != expected_paths:
             return False
         return all(not (output_dir / name).is_symlink()
                    and fingerprint_file(output_dir / name) == fingerprints[name] for name in expected)
@@ -504,11 +516,8 @@ def run_pipeline(
     if output_dir.exists() and not dry_run:
         if not output_dir.is_dir():
             raise NotADirectoryError(f"输出路径不是文件夹: {output_dir}")
-        output_pattern = re.compile(rf"{re.escape(output_prefix)}-(\d+)\.wav", re.IGNORECASE)
-        manifest_names = {f"{output_prefix}_vad_segments.json".lower(), f"{output_prefix}_vad_segments.csv".lower()}
-        for existing in output_dir.iterdir():
-            if output_pattern.fullmatch(existing.name) or existing.name.lower() in manifest_names:
-                raise FileExistsError(f"输出已存在，请选择新目录或不同前缀: {existing}")
+        for existing in _existing_export_paths(output_dir, output_prefix):
+            raise FileExistsError(f"输出已存在，请选择新目录或不同前缀: {existing}")
 
     source_fingerprint = fingerprint_file(audio_path) if not dry_run else None
     segment_source = {"kind": "vad"}
